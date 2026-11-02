@@ -305,6 +305,7 @@ footer .wrap{padding:18px 20px;display:flex;gap:18px;align-items:center;flex-wra
     <strong style="color:var(--navy);font-size:14px">미원부동산</strong>
     <span>마포구 아파트 전문 · 상담 010-3699-1597</span>
     <span id="foot-date"></span>
+    <span id="foot-office" style="flex-basis:100%"></span>
     <span style="flex-basis:100%">자료: 국토교통부 아파트 매매·전월세 실거래자료(공공데이터포털), 한국부동산원 R-ONE 부동산통계, © OpenStreetMap 기여자 · 본 자료는 참고용이며 실제 거래 시 등기부등본 및 관련 공부를 반드시 확인하시기 바랍니다.</span>
   </div>
 </footer>
@@ -646,6 +647,7 @@ function renderOffice() {
   const o = window.OFFICE || {};
   const parts = [o.name, o.ceo && `대표 ${o.ceo}`, o.regNo && `등록번호 ${o.regNo}`, o.address, o.tel].filter(Boolean);
   $('#office-info').textContent = listings.length ? parts.join(' · ') : '';
+  $('#foot-office').textContent = parts.join(' · ');
 }
 function renderListings() {
   listingLayer.clearLayers();
@@ -653,7 +655,10 @@ function renderListings() {
   $('#listings-title').style.display = hidden ? 'none' : '';
   $('#listings').style.display = hidden ? 'none' : '';
   $('#export-btn').style.display = IS_PUBLIC ? 'none' : '';
-  $('#listings-desc').textContent = IS_PUBLIC ? '매물을 클릭하면 위치와 입지분석이 표시됩니다' : '여기서 고친 내용은 이 컴퓨터에 저장됩니다 · 고객 링크에 보이려면 [고객 링크용 파일 저장]을 누르세요';
+  const hasSample = listings.some(isSample);
+  $('#listings-desc').textContent = IS_PUBLIC
+    ? `매물을 클릭하면 위치와 입지분석이 표시됩니다${hasSample ? ' · 예시 매물은 실제 매물이 아니며 가격도 예시입니다' : ''}`
+    : `${hasSample ? '실제 매물을 추가하면 예시 매물은 자동으로 빠집니다 · ' : ''}여기서 고친 내용은 이 컴퓨터에 저장됩니다 · 고객 링크에 보이려면 [고객 링크용 파일 저장]을 누르세요`;
   renderOffice();
   $('#listings').innerHTML =
     listings
@@ -662,7 +667,7 @@ function renderListings() {
         const details = DETAIL_FIELDS.filter(([k]) => l[k]).map(([k, n]) => `${n} ${esc(l[k])}`).join(' · ');
         return `<div class="lcard" data-i="${i}">
         ${IS_PUBLIC ? '' : `<div class="acts"><button data-edit="${i}">수정</button><button data-del="${i}">삭제</button></div>`}
-        <span class="badge ${l.type}">${TYPE_NAME[l.type]}</span>
+        <span class="badge ${l.type}">${TYPE_NAME[l.type]}</span>${isSample(l) ? ' <span class="badge" style="background:#6B7684">예시 매물</span>' : ''}
         <h3>${esc(l.aptNm)}</h3>
         <div class="meta">${esc(l.dong)} · 전용 ${(+l.area || 0).toFixed(1)}㎡ (${((+l.area || 0) / PYEONG).toFixed(1)}평) · ${esc(l.floor || '')}${c.buildYear ? ' · ' + c.buildYear + '년' : ''}</div>
         <div class="price">${listingPrice(l)}</div>
@@ -740,6 +745,7 @@ function saveListing() {
   DETAIL_FIELDS.forEach(([k]) => { l[k] = $(`#f-${k}`).value.trim(); });
   if (!l.aptNm) return alert('단지명을 입력하세요');
   if (editing >= 0) listings[editing] = l; else listings.push(l);
+  if (listings.some((x) => !isSample(x))) listings = listings.filter((x) => !isSample(x)); // 실제 매물이 생기면 예시 매물 제거
   storeListings(); closeModal(); renderListings();
 }
 
