@@ -270,9 +270,10 @@ footer .wrap{padding:18px 20px;display:flex;gap:18px;align-items:center;flex-wra
     </div>
   </section>
 
-  <div class="section-title"><h2>미원부동산 추천매물</h2><span class="desc">매물을 클릭하면 위치와 입지분석이 표시됩니다 · 추가/수정 내용은 이 컴퓨터에 저장됩니다</span>
-    <button class="btn sm no-print" style="margin-left:auto" onclick="resetListings()">샘플로 초기화</button></div>
+  <div class="section-title" id="listings-title"><h2>미원부동산 추천매물</h2><span class="desc" id="listings-desc">매물을 클릭하면 위치와 입지분석이 표시됩니다</span>
+    <button class="btn sm primary no-print" id="export-btn" style="margin-left:auto" onclick="exportListings()">고객 링크용 파일 저장</button></div>
   <section class="listings" id="listings"></section>
+  <div class="note" id="office-info"></div>
 
   <section id="analysis">
     <div class="section-title"><h2>입지분석</h2><span class="desc">교통 · 학군 · 상권 · 개발계획</span>
@@ -321,6 +322,13 @@ footer .wrap{padding:18px 20px;display:flex;gap:18px;align-items:center;flex-wra
       <label id="lb-price">매매가(만원) <input type="number" id="f-price" placeholder="예) 185000 = 18억5천" /></label>
       <label id="lb-deposit">보증금(만원) <input type="number" id="f-deposit" /></label>
       <label id="lb-rent">월세(만원) <input type="number" id="f-rent" /></label>
+      <label>총 층수 <input type="text" id="f-totalFloor" placeholder="예) 25층" /></label>
+      <label>방향 <input type="text" id="f-direction" placeholder="예) 남향 (거실 기준)" /></label>
+      <label>방 / 욕실 수 <input type="text" id="f-rooms" placeholder="예) 방 3 / 욕실 2" /></label>
+      <label>입주가능일 <input type="text" id="f-moveIn" placeholder="예) 즉시 / 협의" /></label>
+      <label>주차대수 <input type="text" id="f-parking" placeholder="예) 세대당 1.2대" /></label>
+      <label>관리비 <input type="text" id="f-mgmtFee" placeholder="예) 약 30만원" /></label>
+      <label>사용승인일 <input type="text" id="f-approvalDate" placeholder="예) 2014.09" /></label>
       <label class="full">특징 / 메모 <textarea id="f-memo" rows="3" placeholder="예) 남향, 올수리, 즉시입주"></textarea></label>
     </div>
     <div class="foot">
@@ -330,6 +338,7 @@ footer .wrap{padding:18px 20px;display:flex;gap:18px;align-items:center;flex-wra
   </div>
 </div>
 
+<script src="listings.js"></script>
 <script src="data.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
@@ -586,18 +595,17 @@ function popupHtml(c, rank) {
 
 // ---------------- 추천매물 ----------------
 const LS_KEY = 'miwon_listings_v1';
-const SAMPLE_LISTINGS = [
-  { id: 's1', aptNm: '마포래미안푸르지오', dong: '아현동', type: 'sale', area: 84.59, price: 185000, deposit: 0, rent: 0, floor: '중층', memo: '3,885세대 대단지 · 애오개역/아현역 도보권 · 남향 (샘플)' },
-  { id: 's2', aptNm: '공덕자이', dong: '공덕동', type: 'jeonse', area: 84.93, price: 0, deposit: 95000, rent: 0, floor: '고층', memo: '공덕역 쿼드러플 역세권 · 입주 협의 가능 (샘플)' },
-  { id: 's3', aptNm: '상암월드컵파크7단지', dong: '상암동', type: 'sale', area: 84.88, price: 115000, deposit: 0, rent: 0, floor: '저층', memo: 'DMC 직주근접 · 월드컵공원 인접 (샘플)' },
-  { id: 's4', aptNm: '마포프레스티지자이', dong: '염리동', type: 'wolse', area: 59.96, price: 0, deposit: 10000, rent: 250, floor: '중층', memo: '신축 · 대흥역 인근 · 즉시 입주 (샘플)' },
-];
+// 고객 링크에서는 listings.js 의 매물만 보여주고 수정 기능을 숨김
+const IS_PUBLIC = location.hostname.endsWith('github.io');
+const FILE_LISTINGS = window.LISTINGS || [];
+const isSample = (l) => /샘플/.test(l.memo || '');
 function loadListings() {
+  if (IS_PUBLIC) return FILE_LISTINGS.slice();
   try {
     const v = JSON.parse(localStorage.getItem(LS_KEY));
-    if (Array.isArray(v)) return v;
+    if (Array.isArray(v) && v.some((l) => !isSample(l))) return v.filter((l) => !isSample(l));
   } catch {}
-  return SAMPLE_LISTINGS.slice();
+  return FILE_LISTINGS.slice();
 }
 function storeListings() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(listings)); } catch {}
@@ -633,21 +641,35 @@ function listingPrice(l) {
   return l.type === 'sale' ? won(+l.price) : l.type === 'jeonse' ? won(+l.deposit) : `${won(+l.deposit)} / 월 ${(+l.rent).toLocaleString()}만`;
 }
 
+const DETAIL_FIELDS = [['totalFloor', '총 층수'], ['direction', '방향'], ['rooms', '방/욕실'], ['moveIn', '입주가능일'], ['parking', '주차'], ['mgmtFee', '관리비'], ['approvalDate', '사용승인일']];
+function renderOffice() {
+  const o = window.OFFICE || {};
+  const parts = [o.name, o.ceo && `대표 ${o.ceo}`, o.regNo && `등록번호 ${o.regNo}`, o.address, o.tel].filter(Boolean);
+  $('#office-info').textContent = listings.length ? parts.join(' · ') : '';
+}
 function renderListings() {
   listingLayer.clearLayers();
+  const hidden = IS_PUBLIC && !listings.length;
+  $('#listings-title').style.display = hidden ? 'none' : '';
+  $('#listings').style.display = hidden ? 'none' : '';
+  $('#export-btn').style.display = IS_PUBLIC ? 'none' : '';
+  $('#listings-desc').textContent = IS_PUBLIC ? '매물을 클릭하면 위치와 입지분석이 표시됩니다' : '여기서 고친 내용은 이 컴퓨터에 저장됩니다 · 고객 링크에 보이려면 [고객 링크용 파일 저장]을 누르세요';
+  renderOffice();
   $('#listings').innerHTML =
     listings
       .map((l, i) => {
         const c = listingComplex(l);
+        const details = DETAIL_FIELDS.filter(([k]) => l[k]).map(([k, n]) => `${n} ${esc(l[k])}`).join(' · ');
         return `<div class="lcard" data-i="${i}">
-        <div class="acts"><button data-edit="${i}">수정</button><button data-del="${i}">삭제</button></div>
+        ${IS_PUBLIC ? '' : `<div class="acts"><button data-edit="${i}">수정</button><button data-del="${i}">삭제</button></div>`}
         <span class="badge ${l.type}">${TYPE_NAME[l.type]}</span>
         <h3>${esc(l.aptNm)}</h3>
         <div class="meta">${esc(l.dong)} · 전용 ${(+l.area || 0).toFixed(1)}㎡ (${((+l.area || 0) / PYEONG).toFixed(1)}평) · ${esc(l.floor || '')}${c.buildYear ? ' · ' + c.buildYear + '년' : ''}</div>
         <div class="price">${listingPrice(l)}</div>
+        ${details ? `<div class="meta">${details}</div>` : ''}
         <div class="memo">${esc(l.memo || '')}</div></div>`;
       })
-      .join('') + `<div class="lcard add no-print" onclick="openModal()"><div class="plus">＋</div>추천매물 추가</div>`;
+      .join('') + (IS_PUBLIC ? '' : `<div class="lcard add no-print" onclick="openModal()"><div class="plus">＋</div>추천매물 추가</div>`);
   document.querySelectorAll('.lcard[data-i]').forEach((el) => {
     el.onclick = (e) => {
       const i = +el.dataset.i;
@@ -667,11 +689,27 @@ function renderListings() {
       .on('click', () => selectListing(i));
   });
 }
-function resetListings() {
-  if (!confirm('추천매물을 샘플 4개로 초기화할까요? (추가한 매물은 삭제됩니다)')) return;
-  listings = SAMPLE_LISTINGS.slice();
-  storeListings();
-  renderListings();
+// 현재 매물을 listings.js 로 저장 → 대시보드 폴더에 덮어쓰고 GitHub 에 올리면 고객 링크에 반영됨
+async function exportListings() {
+  const text = `window.OFFICE = ${JSON.stringify(window.OFFICE || {}, null, 2)};\nwindow.LISTINGS = ${JSON.stringify(listings, null, 2)};\n`;
+  const done = '다음 순서로 고객 링크에 반영하세요.\n1. GitHub Desktop의 Summary 칸에 내용 입력\n2. Commit to main 클릭\n3. Push origin 클릭';
+  if (window.showSaveFilePicker) {
+    try {
+      const h = await window.showSaveFilePicker({ suggestedName: 'listings.js', types: [{ description: 'JavaScript', accept: { 'text/javascript': ['.js'] } }] });
+      const w = await h.createWritable();
+      await w.write(text);
+      await w.close();
+      alert(`저장했습니다. 대시보드 폴더의 listings.js 에 덮어썼는지 확인하세요.\n\n${done}`);
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+  a.download = 'listings.js';
+  a.click();
+  alert(`다운로드 폴더에 listings.js 를 저장했습니다. 대시보드 폴더로 옮겨 기존 파일에 덮어쓰세요.\n\n${done}`);
 }
 
 let editing = -1;
@@ -681,6 +719,7 @@ function openModal(i = -1) {
   $('#modal-title').textContent = i >= 0 ? '추천매물 수정' : '추천매물 추가';
   $('#f-apt').value = l.aptNm; $('#f-dong').value = l.dong; $('#f-type').value = l.type; $('#f-area').value = l.area;
   $('#f-price').value = l.price || ''; $('#f-deposit').value = l.deposit || ''; $('#f-rent').value = l.rent || ''; $('#f-floor').value = l.floor; $('#f-memo').value = l.memo;
+  DETAIL_FIELDS.forEach(([k]) => { $(`#f-${k}`).value = l[k] || ''; });
   toggleFields();
   $('#modal-bg').style.display = 'flex';
 }
@@ -698,6 +737,7 @@ function saveListing() {
     area: +$('#f-area').value || 0, price: +$('#f-price').value || 0, deposit: +$('#f-deposit').value || 0, rent: +$('#f-rent').value || 0,
     floor: $('#f-floor').value.trim(), memo: $('#f-memo').value.trim(),
   };
+  DETAIL_FIELDS.forEach(([k]) => { l[k] = $(`#f-${k}`).value.trim(); });
   if (!l.aptNm) return alert('단지명을 입력하세요');
   if (editing >= 0) listings[editing] = l; else listings.push(l);
   storeListings(); closeModal(); renderListings();
@@ -788,7 +828,7 @@ function showAnalysis(c, listing, scroll) {
     ${c.buildYear ? `<span style="color:var(--muted)">${c.buildYear}년 준공 · ${new Date().getFullYear() - c.buildYear}년차</span>` : ''}
     ${listing ? `<span class="badge ${listing.type}">추천매물 · ${TYPE_NAME[listing.type]} ${listingPrice(listing)}</span>` : ''}
     ${c.approx ? '<span style="color:#B4561A;font-size:12.5px">※ 지도 위치는 동 중심 기준 근사 위치입니다</span>' : ''}
-    <button class="btn sm no-print" style="margin-left:auto" onclick="startPick()">📍 ${c.approx ? '지도에서 정확한 위치 지정' : '위치 수정'}</button>`;
+    ${IS_PUBLIC ? '' : `<button class="btn sm no-print" style="margin-left:auto" onclick="startPick()">📍 ${c.approx ? '지도에서 정확한 위치 지정' : '위치 수정'}</button>`}`;
 
   const hl = [];
   if (a.stations[0]) hl.push(`🚇 ${a.stations[0].name} 도보 ${walk(a.stations[0].dist)}분${a.stations[0].dist <= 500 ? ' (역세권)' : ''}`);
